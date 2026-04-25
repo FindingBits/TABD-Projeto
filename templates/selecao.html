@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-4">Menu de Opções</h2>
+<div class="row g-4">
+    {% for item in itens %}
+    <div class="col-md-3">
+        <div class="card h-100 shadow-sm border-primary">
+            <div class="card-body text-center">
+                <h5 class="card-title">{{ item }}</h5>
+                <p class="card-text">Descrição curta para preencher o espaço da caixa.</p>
+                <a href="#" class="btn btn-outline-primary btn-sm">Selecionar</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

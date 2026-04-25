@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row align-items-center min-vh-75 py-5">
+    
+    <div class="col-lg-6 mb-4 mb-lg-0">
+        <h1 class="display-3 fw-bold lh-1 mb-3">The Portuguese Voting Crypt</h1>
+        <p class="lead fs-4 text-muted">
+            The place you can view and understand election data from <i>Comissão Nacional de Eleições</i> and keep the information safe.
+        </p>
+        <div class="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
+            <a href="/selecao" class="btn btn-primary btn-lg px-4 me-md-2">Search Years</a>
+            <button type="button" class="btn btn-outline-secondary btn-lg px-4">Learn More</button>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="lc-block">
+            <img src="{{ url_for('static', filename='assets/museu_pres_rep.jpg') }}" 
+                 class="img-fluid rounded-5 shadow-lg d-block mx-lg-auto" 
+                 alt="Museu da Presidência" 
+                 width="500" 
+                 height="300" 
+                 loading="lazy"
+                 style="object-fit: cover; border: 2px solid white;">
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5 text-center border-top pt-5">
+    <div class="col-md-4">
+        <h3><i class="bi bi-fast-forward" style="margin-right: 10px;"></i>Fast</h3>
+        <p>Developed with Flask for performance.</p>
+    </div>
+    <div class="col-md-4">
+        <h3><i class="bi bi-bootstrap" style="margin-right: 10px;"></i> Modern</h3>
+        <p>Clear interface with Bootstrap 5.</p>
+    </div>
+    <div class="col-md-4">
+        <h3><i class="bi bi-bar-chart" style="margin-right: 10px;"></i> Interactive</h3>
+        <p>Graphics with Chart.js.</p>
+    </div>
+</div>
+
+{% endblock %}
