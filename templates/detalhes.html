@@ -95,9 +95,14 @@
 
         <div class="card shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Visualização Geográfica</h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary active" onclick="mudarRegiao('continente')">Continente</button>
+                    <button type="button" class="btn btn-outline-primary" onclick="mudarRegiao('acores')">Açores</button>
+                    <button type="button" class="btn btn-outline-primary" onclick="mudarRegiao('madeira')">Madeira</button>
+                </div>
+                
                 <button id="btn-reset" class="btn btn-sm btn-outline-secondary d-none" onclick="resetarMapa()">
-                    <i class="bi bi-arrow-left"></i> Voltar a Portugal
+                    Voltar à Região
                 </button>
             </div>
             <div class="card-body p-2">
@@ -106,15 +111,35 @@
         </div>
 
         <script>
-            // Inicializa o mapa focado nas coordenadas centrais de Portugal
-            var map = L.map('mapa-portugal').setView([39.6, -8.1], 7);
-            
-            // Camada de fundo minimalista (CartoDB Positron fica ótimo para mapas eleitorais!)
+            const regioes = {
+                continente: { centro: [39.6, -8.1], zoom: 7 },
+                acores: { centro: [38.5, -28.0], zoom: 7 },
+                madeira: { centro: [32.7, -17.0], zoom: 10 }
+            };
+
+            let regiaoAtiva = 'continente';
+            var map = L.map('mapa-portugal').setView(regioes[regiaoAtiva].centro, regioes[regiaoAtiva].zoom);
+
             L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
                 attribution: '&copy; OpenStreetMap &copy; CARTO'
             }).addTo(map);
 
             var camadaAtual;
+
+            function mudarRegiao(novaRegiao) {
+                regiaoAtiva = novaRegiao;
+                
+                // Atualiza o aspeto visual dos botões (Bootstrap)
+                const botoes = document.querySelectorAll('.btn-group .btn');
+                botoes.forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+                
+                // Altera a perspetiva do mapa para a região selecionada
+                map.setView(regioes[regiaoAtiva].centro, regioes[regiaoAtiva].zoom);
+                
+                // Recarrega os distritos ou municípios correspondentes àquela região
+                carregarDistritos();
+            }
 
             // Função para dar estilo às fronteiras
             function estiloPadrao(feature) {
@@ -142,7 +167,6 @@
                 camadaAtual.resetStyle(e.target);
             }
 
-            // Carregar Distritos Iniciais
             function carregarDistritos() {
                 document.getElementById('btn-reset').classList.add('d-none');
                 if (camadaAtual) map.removeLayer(camadaAtual);
@@ -150,30 +174,35 @@
                 fetch('/api/mapa/distritos')
                     .then(res => res.json())
                     .then(data => {
+                        // Filtrar os dados no frontend para mostrar apenas o que pertence à região ativa
+                        // (Nota: Açores e Madeira na CAOP costumam vir com o nome do distrito igual à Ilha ou Região)
                         camadaAtual = L.geoJSON(data, {
                             style: estiloPadrao,
                             onEachFeature: function(feature, layer) {
                                 layer.bindTooltip(feature.properties.nome, { sticky: true });
-                                
                                 layer.on({
                                     mouseover: destacarFeature,
                                     mouseout: resetarDestaque,
                                     click: function(e) {
-                                        // Fazer o mapa adaptar-se (Zoom no Distrito selecionado)
                                         map.fitBounds(e.target.getBounds());
                                         carregarMunicipios(feature.properties.codigo);
                                     }
                                 });
                             }
                         }).addTo(map);
-                        map.setView([39.6, -8.1], 7);
                     });
+            }
+
+            function resetarMapa() {
+                // Em vez de voltar sempre ao Continente, volta ao centro da Região que está ativa no botão
+                map.setView(regioes[regiaoAtiva].centro, regioes[regiaoAtiva].zoom);
+                carregarDistritos();
             }
 
             // Carregar Municípios após o clique (Drill-Down)
             // Carregar Municípios após o clique (Drill-Down)
             function carregarMunicipios(codigoDistrito) {
-                document.getElementById('btn-reset').classList.remove('d-none');
+                //document.getElementById('btn-reset').classList.remove('d-none');
                 if (camadaAtual) map.removeLayer(camadaAtual);
 
                 fetch(`/api/mapa/municipios/${codigoDistrito}`)

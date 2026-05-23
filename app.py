@@ -45,6 +45,39 @@ def selecao():
     ]
     return render_template('selecao.html', eleicoes=eleicoes)
 
+@app.route('/about')
+def about():
+    status_db = False
+    versao_db = "Desconectado"
+    versao_postgis = "Não disponível"
+    
+    try:
+        conn = get_db_connection()
+        if conn is not None:
+            cursor = conn.cursor()
+            
+            # Teste 1: Obter versão do PostgreSQL
+            cursor.execute("SELECT version();")
+            versao_db = cursor.fetchone()[0].split(',')[0] # Simplifica a string da versão
+            
+            # Teste 2: Obter versão do PostGIS
+            cursor.execute("SELECT PostGIS_Full_Version();")
+            versao_postgis = cursor.fetchone()[0].split(']')[0] + ']'
+            
+            status_db = True
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        versao_db = f"Erro de ligação: {str(e)}"
+        status_db = False
+
+    return render_template(
+        'about.html', 
+        status_db=status_db, 
+        versao_db=versao_db, 
+        versao_postgis=versao_postgis
+    )
+
 # No teu ficheiro Flask (app.py)
 @app.route('/api/municipios/<distrito_id>')
 def get_municipios(distrito_id):

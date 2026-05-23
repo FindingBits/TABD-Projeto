@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row g-4">
+
+    <div class="col-md-8">
+        <div class="card shadow-sm p-4 mb-4 bg-white">
+            <h2 class="mb-3 text-primary">About the Project</h2>
+            <p class="lead">
+                This platform was developed as part of the practical assignment for the 
+                <strong>Advanced Topics in Databases (TABD)</strong> course unit.
+            </p>
+            <hr>
+
+            <h5>System Objective</h5>
+            <p>
+                The system aims to cross-reference the <strong>Local Election</strong> results in Portugal with the 
+                Official Administrative Map of Portugal (CAOP 2025). The primary objective is to convert raw tabular 
+                and statistical data from the National Elections Commission (CNE) into interactive visual and 
+                geographical knowledge.
+            </p>
+
+            <h5>Architecture and Data Engineering</h5>
+            <p>
+                Strictly following the project's methodological requirements, the application adopts a 
+                layered architecture:
+            </p>
+            <ul>
+                <li><strong>Staging Area:</strong> An intermediate persistence layer where spatial data from the 
+                    CAOP GeoPackages (Mainland, Azores, and Madeira) are injected in a clean and isolated manner.</li>
+                <li><strong>ETL Processing:</strong> Python pipelines (utilising GeoPandas and SQLAlchemy) that 
+                    handle format normalisation, schema matching, and uniform cartographic projection to the 
+                    official national system (EPSG:3763).</li>
+                <li><strong>Database Engine:</strong> PostgreSQL with the PostGIS spatial extension enabled, 
+                    responsible for processing complex geographical queries and exposing optimised polygons via GeoJSON.</li>
+                <li><strong>Thin Web Layer:</strong> A responsive frontend built with HTML5 and Bootstrap, utilising the 
+                    Leaflet library to render dynamic maps with segmented regional navigation (drill-down).</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm bg-white">
+            <div class="card-header bg-transparent py-3">
+                <h5 class="mb-0 text-secondary">System Diagnostics</h5>
+            </div>
+            <div class="card-body">
+
+                <div class="d-flex align-items-center mb-4">
+                    <div class="me-3">
+                        {% if status_db %}
+                        <i class="bi bi-check-circle-fill text-success" style="font-size: 2.5rem;"></i>
+                        {% else %}
+                        <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size: 2.5rem;"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h6 class="mb-0">Database</h6>
+                        <span class="badge {% if status_db %}bg-success{% else %}bg-danger{% endif %}">
+                            {% if status_db %}Operational{% else %}Inaccessible{% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <small class="text-muted d-block">DB Engine:</small>
+                    <span class="font-monospace text-break" style="font-size: 0.85rem;">{{ versao_db }}</span>
+                </div>
+
+                <div class="mb-1">
+                    <small class="text-muted d-block">Spatial Extension:</small>
+                    <span class="font-monospace text-break" style="font-size: 0.85rem;">{{ versao_postgis }}</span>
+                </div>
+
+            </div>
+            <div class="card-footer bg-light text-center py-2">
+                <small class="text-muted">Environment: PostgreSQL 17 + PostGIS</small>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

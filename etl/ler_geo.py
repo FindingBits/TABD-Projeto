@@ -1,7 +1,7 @@
 import fiona
 
 # Substitui pelo caminho real do teu ficheiro gpkg
-gpkg_path = "Continente_CAOP2025.gpkg"
+gpkg_path = "ArqAcores_GOcidental_CAOP2025.gpkg"
 
 camadas = fiona.listlayers(gpkg_path)
 print("Camadas reais encontradas no teu GeoPackage:")

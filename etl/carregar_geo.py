@@ -1,44 +1,100 @@
+import os
 import geopandas as gpd
 from sqlalchemy import create_engine
 
-# 1. Configuração da ligação ao teu PostgreSQL/PostGIS local
+# 1. Configuração da ligação ao PostgreSQL/PostGIS local
 DATABASE_URL = "postgresql://teste:admin123@localhost:5432/eleicoes_db"
 engine = create_engine(DATABASE_URL)
 
-# 2. Caminho para o teu ficheiro GeoPackage
-gpkg_path = "Continente_CAOP2025.gpkg"
+# 2. Mapeamento de ficheiros e respetivas camadas detetadas
+# Altera os caminhos dos ficheiros conforme a tua estrutura de pastas
+config_regioes = [
+    {
+        "ficheiro": "Continente_CAOP2025.gpkg",
+        "camada_distritos": "cont_distritos",
+        "camada_municipios": "cont_municipios"
+    },
+    {
+        "ficheiro": "ArqMadeira_CAOP2025.gpkg", # Ajusta para o nome real do ficheiro da Madeira
+        "camada_distritos": "ram_distritos",
+        "camada_municipios": "ram_municipios"
+    },
+    {
+        "ficheiro": "ArqAcores_GCentral_GOriental_CAOP2025.gpkg", # Ajusta para o nome real dos Açores Central/Oriental
+        "camada_distritos": "raa_cen_ori_distritos",
+        "camada_municipios": "raa_cen_ori_municipios"
+    },
+    {
+        "ficheiro": "ArqAcores_GOcidental_CAOP2025.gpkg", # Ajusta para o nome real dos Açores Ocidental
+        "camada_distritos": "raa_oci_distritos",
+        "camada_municipios": "raa_oci_municipios"
+    }
+]
 
-# No teu carregar_geo.py
-
-# Atualiza com os nomes exatos que descobriste (tudo em minúsculas)
-camada_distritos = "cont_distritos"  
-camada_municipios = "cont_municipios"
-
-def carregar_camada_staging(gpkg_file, layer_name, staging_table_name):
-    print(f"A ler a camada '{layer_name}' do GeoPackage...")
-    # Carrega a camada específica
-    gdf = gpd.read_file(gpkg_file, layer=layer_name)
+def processar_etl_espacial():
+    primeiro_registo = True
     
-    # Garante a projeção oficial de Portugal (PT-TM06 / EPSG:3763)
-    if gdf.crs is None or gdf.crs.to_epsg() != 3763:
-        print(f"-> A converter a projeção de {layer_name} para EPSG:3763...")
-        gdf = gdf.to_crs(epsg=3763)
-    
-    print(f"-> A enviar para a tabela de staging '{staging_table_name}'...")
-    # if_exists="replace" garante que o script é executável várias vezes (rerunnable)
-    gdf.to_postgis(
-        name=staging_table_name,
-        con=engine,
-        schema="public", # Se criares um esquema separado para staging, muda aqui
-        if_exists="replace",
-        index=False
-    )
-    print(f" Sucesso: {layer_name} carregada em {staging_table_name}.\n")
+    for regiao in config_regioes:
+        gpkg_path = regiao["ficheiro"]
+        
+        # Validação simples para evitar quebras se o ficheiro não estiver na pasta
+        if not os.path.exists(gpkg_path):
+            print(f"⚠️ Aviso: Ficheiro {gpkg_path} não encontrado. A saltar...")
+            continue
+            
+        print(f"--- A processar o ficheiro: {gpkg_path} ---")
+        
+        # Determina o comportamento do PostGIS: 'replace' limpa a tabela no primeiro ficheiro,
+        # 'append' adiciona os restantes polígonos sem apagar os dados anteriores.
+        modo_escrita = "replace" if primeiro_registo else "append"
+        
+        # Processamento da camada de Distritos
+        try:
+            gdf_dist = gpd.read_file(gpkg_path, layer=regiao["camada_distritos"])
+            if gdf_dist.crs is None or gdf_dist.crs.to_epsg() != 3763:
+                gdf_dist = gdf_dist.to_crs(epsg=3763)
+                
+            gdf_dist.to_postgis(
+                name="stg_caop_distritos",
+                con=engine,
+                schema="public",
+                if_exists=modo_escrita,
+                index=False
+            )
+            print(f" Sucesso: {regiao['camada_distritos']} integrada em stg_caop_distritos ({modo_escrita}).")
+        except Exception as e:
+            print(f"❌ Erro ao processar distritos de {gpkg_path}: {e}")
 
-# 3. Executar o carregamento para a Área de Staging
-try:
-    carregar_camada_staging(gpkg_path, camada_distritos, "stg_caop_distritos")
-    carregar_camada_staging(gpkg_path, camada_municipios, "stg_caop_municipios")
-    print("ETL Espacial Concluído com Sucesso para a Área de Staging!")
-except Exception as e:
-    print(f"❌ Erro durante o processo de ETL: {e}")
+        # Processamento da camada de Municípios
+        try:
+            gdf_mun = gpd.read_file(gpkg_path, layer=regiao["camada_municipios"])
+            if gdf_mun.crs is None or gdf_mun.crs.to_epsg() != 3763:
+                gdf_mun = gdf_mun.to_crs(epsg=3763)
+            
+            # Padronização de colunas para evitar incompatibilidades de esquemas entre GPKGs no modo append
+            # Garante que a coluna de nome passa a chamar-se 'municipio' se vier como 'concelho'
+            if "concelho" in gdf_mun.columns:
+                gdf_mun = gdf_mun.rename(columns={"concelho": "municipio"})
+            if "dtmn" not in gdf_mun.columns and "dt" in gdf_mun.columns:
+                gdf_mun = gdf_mun.rename(columns={"dt": "dtmn"})
+                
+            gdf_mun.to_postgis(
+                name="stg_caop_municipios",
+                con=engine,
+                schema="public",
+                if_exists=modo_escrita,
+                index=False
+            )
+            print(f" Sucesso: {regiao['camada_municipios']} integrada em stg_caop_municipios ({modo_escrita}).")
+        except Exception as e:
+            print(f"❌ Erro ao processar municípios de {gpkg_path}: {e}")
+            
+        print("-" * 40)
+        primeiro_registo = False
+
+if __name__ == "__main__":
+    try:
+        processar_etl_espacial()
+        print("🚀 ETL Espacial Global Concluído com Sucesso para Todas as Regiões!")
+    except Exception as e:
+        print(f"❌ Falha crítica no pipeline ETL: {e}")
