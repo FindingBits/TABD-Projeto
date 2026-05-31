@@ -4,11 +4,11 @@ Este projeto é uma plataforma de análise eleitoral desenvolvida com Flask, Pos
 
 ## Pré-requisitos
 
-Garante que tens o PostgreSQL 17 instalado e em execução no sistema antes de iniciar.
+PostgreSQL 17 instalado e em execução no sistema antes de iniciar.
 
 ## Instalação e Configuração do Ambiente
 
-1. Instala todas as bibliotecas necessárias via pip:
+1. Instalar todas as bibliotecas necessárias
 ```python
 pip install flask geopandas sqlalchemy geoalchemy2 psycopg2-binary shapely fiona
 ```
@@ -25,14 +25,20 @@ pip install flask geopandas sqlalchemy geoalchemy2 psycopg2-binary shapely fiona
    - `CREATE EXTENSION postgis;`
    - `\q`
 
+3. Restaurar de um backup:
+   - `pg_restore -U postgres -d eleicoes_db -v eleicoes_db_backup.dump`
+
+4. Restaurar um schema:
+   - `psql -U postgres -d eleicoes_db -f "elections_schema.sql"` - Sendo necessário depois carregar dados do excel com o script `carregar_excel.py`
+
 ## Execução dos Pipelines de ETL
 
 1. Executa o script de carregamento dos dados geográficos do GeoPackage para a área de staging:
-   python carregar_geo.py
+   `python carregar_geo.py`
 
 ## Execução da Aplicação Web
 
 1. Inicia o servidor local do Flask:
-   python app.py
+   `python app.py`
 
-2. Abre o navegador e acede ao endereço indicado no terminal (normalmente http://127.0.0.1:5000).
+2. Abre o navegador e acede ao endereço indicado no terminal: http://127.0.0.1:5000.

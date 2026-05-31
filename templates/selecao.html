@@ -31,7 +31,7 @@
                     <h5 class="card-title fw-bold">{{ e.nome }}</h5>
                     <p class="card-text small text-muted">Year: {{ e.ano }}</p>
                     <div class="d-grid mt-3">
-                            <a href="{{ url_for('detalhes', nome_eleicao=e.nome) }}" class="btn btn-outline-primary btn-sm">
+                            <a href="detalhes/{{ e.ano }}" class="btn btn-outline-primary btn-sm">
                                 View Details
                             </a>
                     </div>

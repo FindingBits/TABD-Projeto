@@ -13,55 +13,64 @@
     <div class="col-lg-8">
         <div class="card shadow-sm mb-4">
             <div class="card-body">
-                <h1 class="display-5 fw-bold text-primary">{{ nome }}</h1>
-                <p class="lead">{{ info.descricao }}</p>
-                <hr>
-                <h4>Winner: <span class="badge bg-success">{{ info.vencedor }}</span></h4>
+                <h1 id="titulo-regiao" class="display-5 fw-bold text-primary">{{ nome }}</h1>
+                <p id="subtitulo-ano" class="lead text-muted">Resultados Consolidados — Eleições Autárquicas {{ ano }}</p>
+                <h5 class="text-uppercase text-muted small fw-bold mb-2">Winner: </h5>
+                <span id="badge-vencedor" class="badge bg-success fs-3 px-4 py-2">{{ info.vencedor }}</span>
             </div>
         </div>
         <div class="row">
             <div class="col-lg-6">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0">Detailed Results</h5>
+                <div class="card shadow-sm mb-4 border-0 bg-white">
+                    <div class="card-header bg-transparent py-3">
+                        <h5 class="card-title mb-0 text-secondary fw-bold"><i class="bi bi-bar-chart-fill me-2"></i>Estatísticas de Votação</h5>
                     </div>
                     <div class="card-body">
-                        <table class="table table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Partido / Candidato</th>
-                                    <th class="text-end">Lugares</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for partido, valor in info.mandatos.items() %}
-                                <tr>
-                                    <td><strong>{{ partido }}</strong></td>
-                                    <td class="text-end">{{ valor }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                        <div class="row text-center g-2">
+                            <div class="col-6 p-2 border-end border-bottom">
+                                <small class="text-muted d-block text-uppercase small">Inscritos</small>
+                                <span id="txt-inscritos" class="fs-4 fw-bold text-dark">{{ "{:,}".format(info.inscritos) if info.inscritos is not none else 0 }}</span>
+                            </div>
+                            <div class="col-6 p-2 border-bottom">
+                                <small class="text-muted d-block text-uppercase small">Votantes</small>
+                                <span id="txt-votantes" class="fs-4 fw-bold text-dark">{{ "{:,}".format(info.votantes) if info.votantes is not none else 0 }}</span>
+                            </div>
+                            <div class="col-6 p-2 border-end pt-3">
+                                <small class="text-muted d-block text-uppercase small">Brancos</small>
+                                <span id="txt-brancos" class="fs-5 fw-bold text-secondary">{{ "{:,}".format(info.brancos) if info.brancos is not none else 0 }}</span>
+                            </div>
+                            <div class="col-6 p-2 pt-3">
+                                <small class="text-muted d-block text-uppercase small">Nulos</small>
+                                <span id="txt-nulos" class="fs-5 fw-bold text-secondary">{{ "{:,}".format(info.nulos) if info.nulos is not none else 0 }}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0">Resultados Detalhados</h5>
+                <div class="card shadow-sm border-0 bg-white">
+                    <div class="card-header bg-transparent py-3">
+                        <h5 class="card-title mb-0 text-secondary fw-bold"><i class="bi bi-list-ol me-2"></i>Votos por Força Política</h5>
                     </div>
-                    <div class="card-body">
-                        <p class="mb-1">Abstenção</p>
-                        <h3 class="text-warning">{{ info.abstencao }}</h3>
-                        <div class="progress mb-4" style="height: 5px;">
-                            <div class="progress-bar bg-warning" style="width: {{ info.abstencao }}"></div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th class="ps-3">Partido / Coligação</th>
+                                        <th class="text-end pe-3">Votos Apurados</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="corpo-tabela-resultados">
+                                    {% for partido, valor in info.mandatos.items() %}
+                                    <tr>
+                                        <td class="ps-3 fw-semibold text-secondary">{{ partido }}</td>
+                                        <td class="text-end pe-3 fw-bold text-dark">{{ "{:,}".format(valor) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-
-                        <p class="mb-1">Total de Votantes</p>
-                        <h3>{{ info.total_eleitores }}</h3>
-                            
-                        <p class="mb-1">Votos Apurados</p>
-                        <h3 class="text-info">{{ info.votos_apurados }}</h3>
                     </div>
                 </div>
             </div>
@@ -111,6 +120,9 @@
         </div>
 
         <script>
+
+            window.anoAtivo = {{ ano }};
+
             const regioes = {
                 continente: { centro: [39.6, -8.1], zoom: 7 },
                 acores: { centro: [38.5, -28.0], zoom: 7 },
@@ -167,6 +179,52 @@
                 camadaAtual.resetStyle(e.target);
             }
 
+            function atualizarPainelDados(nomeLocal, dados) {
+                // Função utilitária interna para atualizar elementos de forma segura
+                const definirTextoSeguro = (id, valor) => {
+                    const elemento = document.getElementById(id);
+                    if (elemento) {
+                        elemento.innerText = valor;
+                    } else {
+                        console.warn(`⚠️ O elemento com id='${id}' não foi encontrado no HTML.`);
+                    }
+                };
+
+                // 1. Atualizar Títulos e Vencedor
+                definirTextoSeguro("titulo-regiao", nomeLocal);
+                definirTextoSeguro("badge-vencedor", dados.vencedor || "N/A");
+
+                // 2. Atualizar Indicadores Numéricos (com conversão segura e formatação pt-PT)
+                const inscritos = dados.inscritos !== undefined ? Number(dados.inscritos).toLocaleString('pt-PT') : '0';
+                const votantes = dados.votantes !== undefined ? Number(dados.votantes).toLocaleString('pt-PT') : '0';
+                const brancos = dados.brancos !== undefined ? Number(dados.brancos).toLocaleString('pt-PT') : '0';
+                const nulos = dados.nulos !== undefined ? Number(dados.nulos).toLocaleString('pt-PT') : '0';
+
+                definirTextoSeguro("txt-inscritos", inscritos);
+                definirTextoSeguro("txt-votantes", votantes);
+                definirTextoSeguro("txt-brancos", brancos);
+                definirTextoSeguro("txt-nulos", nulos);
+
+                // 3. Atualizar a Tabela de Votos
+                const tbody = document.getElementById("corpo-tabela-resultados");
+                if (tbody) {
+                    tbody.innerHTML = "";
+                    const mapaVotos = dados.votos_forcas || dados.mandatos || {};
+                    
+                    for (const [partido, votos] of Object.entries(mapaVotos)) {
+                        const linha = `
+                            <tr>
+                                <td class="ps-3 fw-semibold text-secondary">${partido}</td>
+                                <td class="text-end pe-3 fw-bold text-dark">${Number(votos).toLocaleString('pt-PT')}</td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += linha;
+                    }
+                } else {
+                    console.warn("⚠️ Aviso Detetive: O elemento id='corpo-tabela-resultados' não existe.");
+                }
+            }
+
             function carregarDistritos() {
                 document.getElementById('btn-reset').classList.add('d-none');
                 if (camadaAtual) map.removeLayer(camadaAtual);
@@ -185,6 +243,13 @@
                                     mouseout: resetarDestaque,
                                     click: function(e) {
                                         map.fitBounds(e.target.getBounds());
+                                        fetch(`/api/eleicao/${window.anoAtivo}/distrito/${feature.properties.codigo}`)
+                                        .then(res => res.json())
+                                        .then(data => {
+                                            atualizarPainelDados("Distrito de " + feature.properties.nome, data);
+                                        })
+                                        .catch(err => console.error("Erro na API de distritos:", err));
+                                        //atualizarPainelDados("Distrito de " + feature.properties.nome, data);
                                         carregarMunicipios(feature.properties.codigo);
                                     }
                                 });
@@ -231,8 +296,14 @@
                                         map.fitBounds(e.target.getBounds());
                                         
                                         // Mensagem de teste para veres o clique a funcionar no concelho:
-                                        alert("Sucesso! Clicaste no concelho: " + feature.properties.nome);
-                                        
+                                        //alert("Sucesso! Clicaste no concelho: " + feature.properties.nome);
+                                        //atualizarPainelDados("Município de " + feature.properties.nome, data);
+                                        fetch(`/api/eleicao/${window.anoAtivo}/municipio/${feature.properties.nome}`)
+                                        .then(res => res.json())
+                                        .then(data => {
+                                            atualizarPainelDados("Município de " + feature.properties.nome, data);
+                                        })
+                                        .catch(err => console.error("Erro na API de concelhos:", err));
                                         // Aqui podes chamar a função para atualizar os dados do ecrã
                                         if (typeof loadDistrictData === "function") {
                                             loadDistrictData(feature.properties.nome);
@@ -248,6 +319,8 @@
             function resetarMapa() {
                 carregarDistritos();
             }
+
+            
 
             // Arranca o mapa ao carregar a página
             document.addEventListener("DOMContentLoaded", function() {
