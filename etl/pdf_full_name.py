@@ -4,9 +4,6 @@ import Levenshtein as lev
 import pandas as pd
 DISTANCE = 2
 
-    # Expressão Regular para capturar textos entre aspas "..." (padrão dos nomes no PDF)
-    # Exemplo no PDF: "ALIANÇA COM AVEIRO" (PPD/PSD.CDS-PP.PPM)
-
 lista_de_orgaos = ["Câmara Municipal","Assembleia de Freguesia","Assembleia Municipal"]
 
 subs = {'VP':'VOLT'}
@@ -121,17 +118,18 @@ lista_acronimos_check = [
 ]
 
 weird_acronyms = {'PSD': 'PPD/PSD', 'BE': 'B.E.', 'CDS': 'CDS-PP','CDU':'PCP-PEV','RIR':'R.I.R.','R.I.R':'R.I.R.'}
-
-sub_conc = {"MÊDA":"MEDA"}
+sub_conc_2021 = {"MÊDA":"MEDA"}
+sub_conc_2017 = {"MÊDA":"MEDA","FREIXO DE ESPADA À CINTA":"FREIXO DE ESPADA A CINTA"}
+sub_conc_2025 = {"FEIRA":"SANTA MARIA DA FEIRA","FREIXO DE ESPADA A CINTA":"FREIXO DE ESPADA À CINTA","MEDA":"MÊDA"}
 
 dotted_acronyms = {'BE': 'B.E.','RIR':'R.I.R.'}
 
 cols_col = ["[A]","[B]","[C]"]
 cols_cit = ["[D]","[E]", "[F]","[G]"]
 
-conc_name_dif = {"FEIRA":"SANTA MARIA DA FEIRA","FREIXO DE ESPADA A CINTA":"FREIXO DE ESPADA À CINTA","MEDA":"MÊDA"}
 
 split_string = {2021: ">>", 2025: ">",2017:">>"}
+sub_conc = {2021: sub_conc_2021,2025: sub_conc_2025,2017: sub_conc_2017}
 
 def get_municipality_code(code):
     if code < 100000:
@@ -144,7 +142,7 @@ def get_municipality_code(code):
 
 #pre-process pdf to be 1 continuous file instead of having pages
 #some tables go gover the page limit
-def get_file_lines(file):
+def get_file_lines(file,year):
     lines = []
     print("A carregar e a unificar o PDF linha a linha...")
     with pdfplumber.open(file) as pdf:
@@ -159,7 +157,8 @@ def get_file_lines(file):
                 for linha in linhas_da_pagina:
                     # Opcional: .strip() remove espaços inúteis no início/fim da linha
                     lines.append(linha.strip())
-
+                if(year==2017): #2017 tem # de página
+                    lines.pop()
     #precisamos da linha fantasma no fim. CONFIEM
     lines.append([])
     return lines
@@ -168,7 +167,11 @@ def get_file_lines(file):
 def coalition_order(acronym):
     in_order = []
     size = 0
-    acronym_temp = acronym.replace("PDR","ADN")
+
+    acronym_temp = acronym.replace("PNR","E")
+    acronym_temp = acronym_temp.replace("PURP","A)T")
+    acronym_temp = acronym_temp.replace("PDR","ADN")
+    acronym_temp = acronym_temp.replace("PPV/DC","PPV/CDC")
     lista_acronimos_local = sorted(lista_acronimos, key=len, reverse=True)
     for p in lista_acronimos_local:
         if(len(acronym_temp)>0):
@@ -187,8 +190,6 @@ def coalition_order(acronym):
                 size += len(w)
                 acronym_temp = acronym_temp.replace(w,'')
                 in_order.append((pos,w))    
-            # else:
-            #     print(f"Couldn't order completly {acronym} stopped at {acronym_temp}")
 
     if(size<len(acronym)-(len(in_order)-1)):
         print(f"parties: {in_order} from: {acronym} stopped at {acronym_temp}")
@@ -216,18 +217,9 @@ def try_matchings(acronym:str,df_line:pd.DataFrame,df_mandates_temp:pd.DataFrame
     #found = False
     replacements = [(".","/"),("/","."),(".","-"),("-","."),("-","/"),("/","-")]
 
-    # temp_name = acronym.replace("PDR","ADN")
-    # ret_val = matching(temp_name,df_line)
-    # if(ret_val[0]):
-    #     return ret_val[1]
-
+    
     temp_name_ = acronym.replace("VP","VOLT")
     ret_val = matching(temp_name_,df_line,df_mandates_temp)
-    if(ret_val[0]):
-        return (ret_val[1],ret_val[2])
-
-    temp_name = temp_name_.replace(".","/")
-    ret_val = matching(temp_name,df_line,df_mandates_temp)
     if(ret_val[0]):
         return (ret_val[1],ret_val[2])
 
@@ -259,9 +251,7 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
     municipio_atual = None
     orgao_atual = None
 
-    resultado:list[tuple] = []
-
-    lines = get_file_lines(pdf_file)
+    lines = get_file_lines(pdf_file,year)
 
     print("A processar o PDF e a extrair os nomes...")
     split_s = split_string[year]
@@ -286,8 +276,7 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
         #percorrer a tabela até chegar ao concelho
         i+=1                            #entrar nas linhas da tabela de coligações
         while(split_s not in lines[i+1]):
-            #print(f"Inicio While {i}: {linha}")
-            #print(f"Municipio Actual {municipio_atual}")
+
             
             if(i>=len(lines)):      #no ultimo caso não batemos num >>
                 break               #sair fora 
@@ -295,7 +284,6 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
 
 
             linha = lines[i]
-            #print(f"inicio do while {i}: {linha}")
             name_col = linha.split(" ")
             acronym_atual = name_col[-1]
 
@@ -310,7 +298,6 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
                 if(acronym_atual[-1]=='-'):
                     acronym_atual += lines[i+1]
                     i+=1
-
 
             if acronym_atual == "PCP-PEV":
                 i+=1
@@ -335,14 +322,12 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
                 
 
             party_order = coalition_order(acronym_atual)
-            if(municipio_atual in sub_conc):
-                municipio_atual = sub_conc[municipio_atual]
-            
 
-            if((year==2025) and (municipio_atual in conc_name_dif)):
-                municipio_atual = conc_name_dif[municipio_atual]
+
             
-            #print(f"col: {acronym_atual} name:{name_col} municipio_atual: {municipio_atual}")
+            if(municipio_atual in sub_conc[year]):
+                municipio_atual = sub_conc[year][municipio_atual]
+            
             municipality_code = df.loc[df['CONC']==municipio_atual,'CÓD'].values[0]
             df_temp = df.loc[df['CÓD']==municipality_code]
             df_mandates_temp = df_mandates.loc[df_mandates['CÓD']==municipality_code]
@@ -358,7 +343,16 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
                 if col_party in weird_acronyms:
                     party_id = lista_acronimos.index(weird_acronyms[col_party])
                 else:
-                    party_id = lista_acronimos.index(col_party)
+                    if year<2020 and col_party=="PNR":
+                        party_id = lista_acronimos.index("E")
+                    elif year<2021 and col_party=="PURP":
+                        party_id = lista_acronimos.index("A)T")
+                    elif year<2021 and col_party=="PDR":
+                        party_id = lista_acronimos.index('ADN')
+                    else:
+                        party_id = lista_acronimos.index(col_party)
+                    
+                    #party_id = lista_acronimos.index(col_party)
 
                 if(party_id<0):
                     print(f"PARTY ID MENOR QUE 0 {col_party} not found")
@@ -412,9 +406,7 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
             municipio_atual = lines[i-1].strip().upper()
         
         i+=1
-    
-    #print(coalition_candidacies)
-    #print(coalition_parties)
+
     return(coalition_candidacies,coalition_parties)
 
 
@@ -458,7 +450,7 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
     orgao_atual = None
 
 
-    lines = get_file_lines(pdf_file)
+    lines = get_file_lines(pdf_file,year)
 
     print("A processar o PDF e a extrair os nomes...")
     split_s = split_string[year]
@@ -483,14 +475,11 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
         #percorrer a tabela até chegar ao concelho
         i+=1                            #entrar nas linhas da tabela de coligações
         while(split_s not in lines[i+1]):
-            #print(f"Inicio While {i}: {linha}")
-            #print(f"Municipio Actual {municipio_atual}")
             
             if(i>=len(lines)):      #no ultimo caso não batemos num >>
                 break               #sair fora 
             
             linha = lines[i]
-            #print(f"inicio do while {i}: {linha}")
             name_col = linha.split(" ")
             
             if(len(name_col)<2):
@@ -508,8 +497,8 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
                 acronym_atual += lines[i+1]
                 i+=1
 
-            if(municipio_atual in sub_conc):
-                municipio_atual = sub_conc[municipio_atual]
+            if(municipio_atual in sub_conc[year]):
+                municipio_atual = sub_conc[year][municipio_atual]
             
             #não devia ser legal poderem ter ACRONIMOS com espaços
             if(year==2021):
@@ -533,11 +522,16 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
                     acronym_atual = "TJPM"
                     name_col = "MOVIMENTO INDEPENDENTE TODOS JUNTOS POR MAÇÃO"
                     i+=1
-            # if((year==2025) and (municipio_atual in conc_name_dif)):
-            #     municipio_atual = conc_name_dif[municipio_atual]
-            #print(f"col: {acronym_atual} name:{name_col} municipio_atual: {municipio_atual}")
+            if(year==2017):
+                if(municipio_atual=="VILA NOVA DE CERVEIRA"):
+                    acronym_atual = "PenCe"
+                    name_col = "MOVIMENTO INDEPENDENTE PENSAR CERVEIRA - PenCe"
+                    i+=1
+                if(municipio_atual=="VIZELA"):
+                    acronym_atual = "VS - VHS"
+                    name_col = "Vizela Sempre - Vitor Hugo Salgado - Independentes"
+                    i+=1
 
-            #print(f"Municipio Actual: {municipio_atual}")
             municipality_code = df.loc[df['CONC']==municipio_atual,'CÓD'].values[0]
             df_temp = df.loc[df['CÓD']==municipality_code]
             df_mandates_temp = df_mandates.loc[df_mandates['CÓD']==municipality_code]
@@ -571,10 +565,6 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
                 if(found):
                     citizen_group_candidacies.append((year,code,acronym_atual,name_col,votes,0,expected_mandates))
 
-                # votes = try_matchings(acronym_atual,df_temp)
-                # coalition_candidacies.append((year,code,acronym_atual,name_col,votes,0,0))
-
-
             i+=1
 
             if(i+1>=len(lines)):
@@ -588,81 +578,4 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
         
         i+=1
     
-    #print(coalition_candidacies)
-    #print(coalition_parties)
     return citizen_group_candidacies   
-
-# def get_citizen_names_pdf_(pdf_file,lista_citizens):
-
-#     orgao_target = "Câmara Municipal"
-#     #pdf_file = "GruposCidadaos2021.pdf"
-#     municipio_atual = None
-#     orgao_atual = None
-
-#     resultado = []
-#     #temp_result = []
-
-#     lines = get_file_lines(pdf_file)
-
-#     print("A processar o PDF e a extrair os nomes...")
-
-#     i = 0
-#     while (i<len(lines)):
-#         linha = lines[i]
-#         #print(f"inicio do for {i}: {linha}")
-
-#         if '>>' in linha:
-#             municipio_atual = lines[i-1].strip()
-
-#         #ver se é a linha do orgão, se sim dar set
-#         if linha in lista_de_orgaos:
-#             orgao_atual = linha.strip()
-#             #print(f"Orgão actual mudou:{orgao_atual} ")
-        
-#         #se não é CM, não nos interessa
-#         if (orgao_atual != orgao_target):
-#             i+=1
-#             continue
-        
-#         temp_result = []
-#         #se chegamos aqui, estamos no orgão correcto
-#         #percorrer a tabela até chegar ao concelho
-#         while('>>' not in linha):
-#             i+=1                    #entrar nas linhas da tabela de coligações
-#             if(i>=len(lines)):      #no ultimo caso não batemos num >>
-#                 break               #sair fora 
-            
-#             linha = lines[i]
-#             #print(f"inicio do while {i}: {linha}")
-#             name_col = linha.split(" ")
-#             acronym_atual = name_col[-1]
-            
-#             for col in lista_citizens:    #vamos entrar aqui 1 ou 2x desnecessariamente, mas não é critico
-                
-#                 if col == acronym_atual:
-#                     name_col = linha.split(" ")
-#                     name_col = name_col[:-1]
-#                     name_col = ' '.join(name_col)
-#                     acronym = col 
-#                     resultado.append((municipio_atual.upper(),acronym,name_col))
-#                     break 
-#         #se saiu do while, chegamos à linha que diz a referência geográfica
-#         # resultado[municipio_atual] = temp_result
-#         # if(len(temp_result)>0):
-#         #     print(municipio_atual)
-#         #     print(temp_result)
-#         i+=1    
-
-#     print(resultado)
-#     return sorted(resultado)
-
-
-# # 3. Mostrar os primeiros resultados para confirmares
-# print(f"\nSucesso! Foram encontrados {len(lista_nomes_final)} nomes de coligações únicos.")
-# print("Aqui estão os primeiros 10 exemplos:")
-# for nome in lista_nomes_final[:10]:
-#     print(f"- {nome}")
-    
-# # Se quiseres guardar num DataFrame do Pandas para o teu ETL:
-# df_nomes = pd.DataFrame(lista_nomes_final, columns=['coalition_name'])
-# df_nomes.to_excel("nomes_coligacoes.xlsx", index=False)
