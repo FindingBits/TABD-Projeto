@@ -2,6 +2,9 @@ from flask import Flask, render_template, jsonify
 import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import plotly
+import plotly.express as px
+import json
 
 app = Flask(__name__)
 
@@ -391,6 +394,84 @@ def api_municipios(codigo_distrito):
     except Exception as e:
         print(f"❌ Erro na Query dos Municípios: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/analise')
+def pagina_analise():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        # Gráfico 1: Evolução da Abstenção Média por Distrito 
+        query_abstencao = """
+            SELECT m.district_name, ROUND(AVG(f.abstention_rate), 2) AS media_abstencao
+            FROM dw.fact_turnout_analysis f
+            JOIN dw.dim_municipality m ON f.municipality_code = m.municipality_code
+            WHERE m.district_name IS NOT NULL
+            GROUP BY m.district_name
+            ORDER BY media_abstencao DESC;
+        """
+        cursor.execute(query_abstencao)
+        dados_abs = cursor.fetchall()
+        
+        fig1 = px.bar(dados_abs, x='district_name', y='media_abstencao', 
+                      title="Abstenção Média por Distrito (%)",
+                      labels={'district_name': 'Distrito', 'media_abstencao': '% Abstenção'})
+        grafico_abstencao_json = json.dumps(fig1, cls=plotly.utils.PlotlyJSONEncoder)
+
+        # Gráfico 2: Share de Votos Total Nacional por Força Política (Usando o DW)
+        query_forcas = """
+            SELECT 
+                c.candidacy_acronym, 
+                SUM(f.votes) AS total_votos
+            FROM dw.fact_election_results f
+            JOIN dw.dim_candidacy c ON f.candidacy_key = c.candidacy_key
+            GROUP BY c.candidacy_acronym
+            ORDER BY total_votos DESC
+            LIMIT 7;
+        """
+        cursor.execute(query_forcas)
+        dados_votos = cursor.fetchall()
+        
+        fig2 = px.pie(dados_votos, names='candidacy_acronym', values='total_votos', 
+                      title="Distribuição Global de Votos Apurados")
+        grafico_votos_json = json.dumps(fig2, cls=plotly.utils.PlotlyJSONEncoder)
+
+        # QUERY AVANÇADA EXTRA: Simulação do Método D'Hondt Real 
+        query_dhondt = """
+            WITH RECURSIVE divisores AS (
+                SELECT 1 AS divisor
+                UNION ALL
+                SELECT divisor + 1 FROM divisores WHERE divisor < 20
+            ),
+            quocientes AS (
+                SELECT 
+                    m.municipality_name,
+                    c.candidacy_acronym,
+                    f.votes / d.divisor AS quociente,
+                    ROW_NUMBER() OVER (PARTITION BY m.municipality_name ORDER BY (f.votes / d.divisor) DESC) as rn
+                FROM dw.fact_election_results f
+                JOIN dw.dim_municipality m ON f.municipality_code = m.municipality_code
+                JOIN dw.dim_candidacy c ON f.candidacy_key = c.candidacy_key
+                JOIN dw.fact_turnout_analysis t ON f.municipality_code = t.municipality_code AND f.election_year = t.election_year
+                CROSS JOIN divisores d
+                WHERE m.municipality_name = 'Ourém' AND f.election_year = 2021 -- Exemplo estático para demonstração
+            )
+            SELECT candidacy_acronym, COUNT(*) as mandatos_calculados_dhondt
+            FROM quocientes
+            WHERE rn <= 7 -- Número de mandatos total de Ourém em 2021
+            GROUP BY candidacy_acronym
+            ORDER BY mandatos_calculados_dhondt DESC;
+        """
+        cursor.execute(query_dhondt)
+        resultados_dhondt = cursor.fetchall()
+
+        return render_template('analise.html', 
+                               grafico_abstencao=grafico_abstencao_json, 
+                               grafico_votos=grafico_votos_json,
+                               resultados_dhondt=resultados_dhondt)
     finally:
         cursor.close()
         conn.close()

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+    <div class="card shadow-sm mb-4 bg-primary text-white text-center p-4">
+        <h1 class="fw-bold">Painel de Business Intelligence & Analytics</h1>
+        <p class="lead mb-0">Demonstração das Queries Avançadas e Métricas do Data Warehouse</p>
+    </div>
+
+    <!-- Secção dos Gráficos Obrigatórios -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm p-3 bg-white">
+                <div id="chart-abstencao"></div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm p-3 bg-white">
+                <div id="chart-votos"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secção da Query Especial: Atribuição de Lugares por D'Hondt -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-dark text-white fw-bold">
+            <i class="bi bi-calculator me-2"></i> Algoritmo de Atribuição de Mandatos (Método D'Hondt via SQL)
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Demonstração analítica da aplicação do método D'Hondt recorrendo a <code>WITH RECURSIVE</code> e <code>WINDOW FUNCTIONS</code> diretamente na base de dados para o concelho de Ourém (2021).</p>
+            <table class="table table-striped align-middle">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>Força Política (Acrónimo)</th>
+                        <th class="text-center">Mandatos Atribuídos pelo Algoritmo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in resultados_dhondt %}
+                    <tr>
+                        <td class="fw-bold text-secondary">{{ linha.candidacy_acronym }}</td>
+                        <td class="text-center fw-bold text-primary fs-5">{{ linha.mandatos_calculados_dhondt }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts do Plotly -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+    var graphsAbstencao = {{ grafico_abstencao | safe }};
+    Plotly.newPlot('chart-abstencao', graphsAbstencao.data, graphsAbstencao.layout);
+
+    var graphsVotos = {{ grafico_votos | safe }};
+    Plotly.newPlot('chart-votos', graphsVotos.data, graphsVotos.layout);
+</script>
+
+{% endblock %}
