@@ -421,22 +421,41 @@ def pagina_analise():
                       labels={'district_name': 'Distrito', 'media_abstencao': '% Abstenção'})
         grafico_abstencao_json = json.dumps(fig1, cls=plotly.utils.PlotlyJSONEncoder)
 
-        # Gráfico 2: Share de Votos Total Nacional por Força Política (Usando o DW)
-        query_forcas = """
+        # Gráfico 2: Verificação de Inconsistências nos Mandatos (Auditoria DW)
+        query_inconsistencias = """
             SELECT 
-                c.candidacy_acronym, 
-                SUM(f.votes) AS total_votos
+                m.municipality_name AS concelho,
+                c.candidacy_acronym AS partido,
+                SUM(ABS(f.mandate_difference)) AS desvio_mandatos
             FROM dw.fact_election_results f
+            JOIN dw.dim_municipality m ON f.municipality_code = m.municipality_code
             JOIN dw.dim_candidacy c ON f.candidacy_key = c.candidacy_key
-            GROUP BY c.candidacy_acronym
-            ORDER BY total_votos DESC
-            LIMIT 7;
+            GROUP BY m.municipality_name, c.candidacy_acronym
+            HAVING SUM(ABS(f.mandate_difference)) >= 0 -- Mostra 0 se tudo estiver perfeito, >0 se houver erro
+            ORDER BY desvio_mandatos DESC
+            LIMIT 10; -- Mostra os top 10 concelhos com potenciais problemas
         """
-        cursor.execute(query_forcas)
-        dados_votos = cursor.fetchall()
+        cursor.execute(query_inconsistencias)
+        dados_inc = cursor.fetchall()
         
-        fig2 = px.pie(dados_votos, names='candidacy_acronym', values='total_votos', 
-                      title="Distribuição Global de Votos Apurados")
+        fig2 = px.bar(dados_inc, 
+                      x='concelho', 
+                      y='desvio_mandatos', 
+                      color='partido',
+                      title="Auditoria: Desvios de Mandatos por Concelho (Calculados vs Esperados)",
+                      labels={'concelho': 'Município', 'desvio_mandatos': 'Diferença de Mandatos', 'partido': 'Força Política'},
+                      barmode='group')
+                      
+        if not dados_inc or sum(item['desvio_mandatos'] for item in dados_inc) == 0:
+            fig2.update_layout(
+                annotations=[{
+                    'text': "100% Consistente: Nenhum desvio de mandatos detetado!",
+                    'xref': "paper", 'yref': "paper",
+                    'x': 0.5, 'y': 0.5, 'showarrow': False,
+                    'font': {'size': 16, 'color': 'green'}
+                }]
+            )
+            
         grafico_votos_json = json.dumps(fig2, cls=plotly.utils.PlotlyJSONEncoder)
 
         # QUERY AVANÇADA EXTRA: Simulação do Método D'Hondt Real 
