@@ -483,7 +483,7 @@ INSERT INTO public.municipalities (code,district,name) VALUES
 ('182200',18,'Vila Nova De Paiva'),
 ('182300',18,'Viseu'),
 ('182400',18,'Vouzela'),
-('310100',46,'Calheta (R.A.M.)'),
+('310100',46,'Calheta'),
 ('310200',46,'Câmara De Lobos'),
 ('310300',46,'Funchal'),
 ('310400',46,'Machico'),
