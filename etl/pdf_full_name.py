@@ -306,10 +306,22 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
                 continue
             
             if (not check_if_acronym(acronym_atual)):
-                i+=1
-                break
+                spelling = 0
+                if '.' in acronym_atual:
+                    for w in weird_acronyms:
+                        if w in acronym_atual:
+                            if check_if_acronym(acronym_atual.replace(w,weird_acronyms[w])):
+                                spelling = 1
+                                break 
+                if (year==2025 and municipio_atual=='OEIRAS' and acronym_atual=='PAN'):
+                    acronym_atual = 'PS - PAN'
+                    spelling=1
+                
+                if not spelling:
+                    i+=1
+                    continue
 
-
+            
             name_col = linha.split(" ")
             name_col = name_col[:-1]
             name_col = ' '.join(name_col)
@@ -319,7 +331,8 @@ def get_coalition_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd
                 if(municipio_atual=="Alcácer do Sal".upper()):
                     name_col = "TODOS JUNTOS PARA QUE ALCÁCER GANHE"
                     acronym_atual = "PPD/PSD.CDS-PP.MPT.PPM.A"
-                
+            if (year==2025 and acronym_atual=='PS - PAN'):
+                name_col = "PS e PAN - EM OEIRAS TODOS CONTAM"
 
             party_order = coalition_order(acronym_atual)
 
@@ -483,9 +496,12 @@ def get_citizen_names_pdf(pdf_file:str,year:int,df:pd.DataFrame,df_mandates:pd.D
             name_col = linha.split(" ")
             
             if(len(name_col)<2):
-                i+=1
-                break
-
+                if(year==2017 and name_col[-1]=='2017'):
+                    i+=1
+                    continue
+                else:
+                    i+=1
+                    break
 
             
             acronym_atual = name_col[-1]

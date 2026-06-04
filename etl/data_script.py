@@ -1,8 +1,6 @@
 import os
 import pandas as pd
-from sqlalchemy import create_engine, text
 import pdf_full_name as pdf_names
-import Levenshtein as lev
 import sys
 
 #pip install pdfplumber xlrd Levenshtein
@@ -197,8 +195,8 @@ def load_excel_results_clean_headers(EXCEL_FILE,year)->pd.DataFrame:
     
     df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.A\)$', '', regex=True) #type:ignore
     df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.A\.\)$', '', regex=True) #type:ignore
-    df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\.\)$', '', regex=True) #type:ignore
-    df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\)$', '', regex=True) #type:ignore
+    # df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\.\)$', '', regex=True) #type:ignore
+    # df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\)$', '', regex=True) #type:ignore
 
     
     print(df)
@@ -254,8 +252,8 @@ def load_excel_results_clean_headers_(EXCEL_FILE,year)->pd.DataFrame:
     df = df[df['ÓRG']=="CM"]
     df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.A\)$', '', regex=True) #type:ignore
     df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.A\.\)$', '', regex=True) #type:ignore
-    df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\.\)$', '', regex=True) #type:ignore
-    df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\)$', '', regex=True) #type:ignore
+    # df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\.\)$', '', regex=True) #type:ignore
+    # df['CONC'] = df['CONC'].str.replace(r'\s*\(R\.A\.M\)$', '', regex=True) #type:ignore
 
     if(year==2025):
         df.astype({"CÓD":str})
@@ -551,6 +549,10 @@ def get_data():
         #output
         with open(excel_data[key]['output'], "w", encoding="utf-8") as f:
             for keys in dep_data:
+                f.write(f"-- ----------------------------------------------------\n")
+                f.write(f"-- Data {keys}\n")
+                f.write(f"-- ----------------------------------------------------\n")
+                
                 f.write(f"INSERT INTO public.{keys} {insert_args[keys]} VALUES\n")
                 s = ""
                 for elem in dep_data[keys]:
@@ -568,5 +570,57 @@ def get_data():
                 s+=";\n\n"
                 f.write(s)
 
+
+def unificar_ficheiros_sql(ficheiro_saida):
+    """
+    Lê uma lista de caminhos de ficheiros .sql e junta-os num único ficheiro,
+    adicionando cabeçalhos de separação para organização.
+    """
+    print(f"A iniciar a consolidação em: {ficheiro_saida}")
+    
+    try:
+        with open(ficheiro_saida, mode="w", encoding="utf-8") as f_destino:
+            # Escreve um cabeçalho global inicial
+            f_destino.write("-- ====================================================\n")
+            f_destino.write("-- FICHEIRO GLOBAL CONSOLIDADO AUTOMATICAMENTE (ETL)\n")
+            f_destino.write("-- ====================================================\n\n")
+            
+            for key in excel_data:
+                caminho = excel_data[key]['output']
+                if not os.path.exists(caminho):
+                    print(f"⚠️ Aviso: O ficheiro '{caminho}' não foi encontrado. A saltar...")
+                    continue
+                
+                nome_base = key #os.path.basename(caminho)
+                print(f"-> A processar: {nome_base}")
+                
+                # Injeta um separador visual no SQL para identificar de onde veio o código
+                f_destino.write(f"-- ----------------------------------------------------\n")
+                f_destino.write(f"-- Data Elections {nome_base}\n")
+                f_destino.write(f"-- ----------------------------------------------------\n")
+                
+                # Lê o conteúdo do ficheiro atual e escreve-o diretamente no destino
+                with open(caminho, mode="r", encoding="utf-8") as f_origem:
+                    f_destino.write(f_origem.read())
+                
+                # Garante que há quebras de linha entre os ficheiros para evitar colagens de texto erradas
+                f_destino.write("\n\n")
+                
+        print("🟢 Unificação concluída com sucesso!")
+        
+    except Exception as e:
+        print(f"🔴 Erro crítico durante a unificação: {e}")
+
+    # --- Configuração dos Caminhos ---
+    # Defina aqui a ordem exata em que as tabelas e funções devem ser criadas
+    ficheiros_a_juntar = [
+        "etl/schema_base.sql",     # 1. Cria as tabelas, chaves e restrições CHECK
+        "etl/dados_iniciais.sql",  # 2. Insere os distritos, partidos estáveis, etc.
+        "etl/triggers_dhondt.sql"  # 3. Injeta as funções PL/pgSQL e os Triggers que estabilizámos
+    ]
+
+#ficheiro_final = "etl/schema_clean.sql"
+
 if __name__ == "__main__":
     get_data()
+    unificar_ficheiros_sql("data-output/all_data.sql")
