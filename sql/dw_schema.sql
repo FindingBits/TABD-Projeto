@@ -198,3 +198,17 @@ JOIN public.parties p1 ON pc.party_id_a = p1.party_id
 JOIN public.parties p2 ON pc.party_id_b = p2.party_id
 GROUP BY p1.acronym, p2.acronym
 ORDER BY total_coligacoes_juntos DESC;
+
+CREATE OR REPLACE VIEW dw.vw_hierarchical_mandate_totals AS
+SELECT 
+    fr.election_year AS ano,
+    m.district_name AS distrito,
+    m.municipality_name AS concelho,
+    dc.candidacy_acronym AS força_politica,
+    SUM(fr.calculated_mandates)::INTEGER AS mandatos_conquistados
+FROM dw.fact_election_results fr
+JOIN dw.dim_municipality m ON fr.municipality_code = m.municipality_code
+JOIN dw.dim_candidacy dc ON fr.candidacy_key = dc.candidacy_key
+GROUP BY ROLLUP (fr.election_year, m.district_name, m.municipality_name, dc.candidacy_acronym)
+HAVING (dc.candidacy_acronym IS NOT NULL OR m.municipality_name IS NULL);
+
