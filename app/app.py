@@ -131,8 +131,6 @@ def detalhes_ano(ano):
         
         vencedor = resultados[0]["acronym"] if resultados else "N/A"
         
-        # 2. IMPORTANTE: Modificar a estrutura que passas para o HTML.
-        # Em vez de passar apenas {acronimo: votos}, passamos uma lista de dicionários com todos os dados.
         info_formatada = {
             "vencedor": vencedor,
             "descricao": f"Resultados Consolidados Nacionais para a totalidade do território.",
@@ -302,7 +300,6 @@ def get_municipios(distrito_id):
     cursor = conn.cursor()
     
     # Adaptado: Alinhado com as colunas reais da tua tabela stg_caop_municipios 
-    # e usando o VARCHAR (string) do teu distrito para fazer o corte dos 2 primeiros dígitos.
     query = """
         SELECT 
             dtmn, municipio, 
@@ -332,7 +329,6 @@ def api_distritos():
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     # Mantido a tabela 'stg_caop_distritos' garantindo que o tipo de dados
-    # mapeia corretamente para o teu front-end.
     query = """
         SELECT 
             dt AS codigo,
