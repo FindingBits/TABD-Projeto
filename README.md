@@ -12,7 +12,7 @@ Juntar conteúdos de tamanho grande (copiar diretamente para a raiz) em: [Downlo
 
 1. Instalar todas as bibliotecas necessárias
 ```python
-pip install flask geopandas sqlalchemy geoalchemy2 psycopg2-binary shapely fiona pdfplumber xlrd levenshtein bs4
+pip install flask geopandas sqlalchemy geoalchemy2 psycopg2-binary shapely fiona pdfplumber xlrd levenshtein bs4 plotly
 ```
 
 ## Configuração da Base de Dados
