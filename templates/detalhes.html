@@ -57,15 +57,22 @@
                             <table class="table table-hover align-middle mb-0">
                                 <thead class="table-light sticky-top">
                                     <tr>
-                                        <th class="ps-3">Partido / Coligação</th>
+                                        <th class="ps-3" style="width: 60px;">Logo</th>
+                                        <th>Partido / Coligação</th>
                                         <th class="text-end pe-3">Votos Apurados</th>
                                     </tr>
                                 </thead>
                                 <tbody id="corpo-tabela-resultados">
-                                    {% for partido, valor in info.mandatos.items() %}
+                                    {% for item in info.lista_resultados %}
                                     <tr>
-                                        <td class="ps-3 fw-semibold text-secondary">{{ partido }}</td>
-                                        <td class="text-end pe-3 fw-bold text-dark">{{ "{:,}".format(valor) }}</td>
+                                        <td class="ps-3">
+                                            <img src="{{ item.logo_url }}" 
+                                                alt="Logo {{ item.acronym }}" 
+                                                class="img-fluid rounded border bg-light" 
+                                                style="max-width: 30px; max-height: 30px; object-fit: contain;">
+                                        </td>
+                                        <td class="fw-semibold text-secondary">{{ item.acronym }}</td>
+                                        <td class="text-end pe-3 fw-bold text-dark">{{ "{:,}".format(item.votos) }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -141,19 +148,15 @@
             function mudarRegiao(novaRegiao) {
                 regiaoAtiva = novaRegiao;
                 
-                // Atualiza o aspeto visual dos botões (Bootstrap)
                 const botoes = document.querySelectorAll('.btn-group .btn');
                 botoes.forEach(btn => btn.classList.remove('active'));
                 event.target.classList.add('active');
                 
-                // Altera a perspetiva do mapa para a região selecionada
                 map.setView(regioes[regiaoAtiva].centro, regioes[regiaoAtiva].zoom);
                 
-                // Recarrega os distritos ou municípios correspondentes àquela região
                 carregarDistritos();
             }
 
-            // Função para dar estilo às fronteiras
             function estiloPadrao(feature) {
                 return {
                     fillColor: feature.properties.tipo === 'distrito' ? '#3388ff' : '#ff7800',
@@ -164,7 +167,6 @@
                 };
             }
 
-            // Efeito de Hover (Passar o rato por cima)
             function destacarFeature(e) {
                 var layer = e.target;
                 layer.setStyle({
@@ -180,7 +182,6 @@
             }
 
             function atualizarPainelDados(nomeLocal, dados) {
-                // Função utilitária interna para atualizar elementos de forma segura
                 const definirTextoSeguro = (id, valor) => {
                     const elemento = document.getElementById(id);
                     if (elemento) {
@@ -209,19 +210,46 @@
                 const tbody = document.getElementById("corpo-tabela-resultados");
                 if (tbody) {
                     tbody.innerHTML = "";
-                    const mapaVotos = dados.votos_forcas || dados.mandatos || {};
                     
-                    for (const [partido, votos] of Object.entries(mapaVotos)) {
-                        const linha = `
-                            <tr>
-                                <td class="ps-3 fw-semibold text-secondary">${partido}</td>
-                                <td class="text-end pe-3 fw-bold text-dark">${Number(votos).toLocaleString('pt-PT')}</td>
-                            </tr>
-                        `;
-                        tbody.innerHTML += linha;
+                    if (dados.lista_resultados && dados.lista_resultados.length > 0) {
+                        dados.lista_resultados.forEach(item => {
+                            // Forçar imagem padrão se o link vier vazio, nulo ou inválido da base de dados
+                            let logoSrc = item.logo_url;
+                            if (!logoSrc || logoSrc.trim() === "" || logoSrc === "None") {
+                                logoSrc = '/static/assets/default_logo.avif';
+                            }
+
+                            const linha = `
+                                <tr>
+                                    <td class="ps-3">
+                                        <img src="${logoSrc}" 
+                                            alt="Logo ${item.acronym}" 
+                                            class="img-fluid rounded border bg-light" 
+                                            style="width: 30px; height: 30px; max-width: 30px; max-height: 30px; object-fit: contain;"
+                                            onerror="this.onerror=null; this.src='/static/assets/default_logo.avif';">
+                                    </td>
+                                    <td class="fw-semibold text-secondary">${item.acronym}</td>
+                                    <td class="text-end pe-3 fw-bold text-dark">${Number(item.votos).toLocaleString('pt-PT')}</td>
+                                </tr>
+                            `;
+                            tbody.innerHTML += linha;
+                        });
+                    } else {
+                        // Fallback
+                        const mapaVotos = dados.votos_forcas || dados.mandatos || {};
+                        for (const [partido, votos] of Object.entries(mapaVotos)) {
+                            const linha = `
+                                <tr>
+                                    <td class="ps-3">
+                                        <img src="/static/images/default_logo.png" class="img-fluid rounded border bg-light" style="width: 30px; height: 30px; object-fit: contain;">
+                                    </td>
+                                    <td class="fw-semibold text-secondary">${partido}</td>
+                                    <td class="text-end pe-3 fw-bold text-dark">${Number(votos).toLocaleString('pt-PT')}</td>
+                                </tr>
+                            `;
+                            tbody.innerHTML += linha;
+                        }
                     }
-                } else {
-                    console.warn("⚠️ Aviso Detetive: O elemento id='corpo-tabela-resultados' não existe.");
                 }
             }
 
@@ -233,7 +261,6 @@
                     .then(res => res.json())
                     .then(data => {
                         // Filtrar os dados no frontend para mostrar apenas o que pertence à região ativa
-                        // (Nota: Açores e Madeira na CAOP costumam vir com o nome do distrito igual à Ilha ou Região)
                         camadaAtual = L.geoJSON(data, {
                             style: estiloPadrao,
                             onEachFeature: function(feature, layer) {
@@ -258,26 +285,22 @@
                     });
             }
 
-            function resetarMapa() {
+            /*function resetarMapa() {
                 // Em vez de voltar sempre ao Continente, volta ao centro da Região que está ativa no botão
                 map.setView(regioes[regiaoAtiva].centro, regioes[regiaoAtiva].zoom);
                 carregarDistritos();
-            }
+            }*/
 
-            // Carregar Municípios após o clique (Drill-Down)
-            // Carregar Municípios após o clique (Drill-Down)
             function carregarMunicipios(codigoDistrito) {
-                //document.getElementById('btn-reset').classList.remove('d-none');
                 if (camadaAtual) map.removeLayer(camadaAtual);
 
                 fetch(`/api/mapa/municipios/${codigoDistrito}`)
                     .then(res => res.json())
                     .then(data => {
                         camadaAtual = L.geoJSON(data, {
-                            // Estilo específico para concelhos para saberes visualmente que mudou
                             style: function(feature) {
                                 return {
-                                    fillColor: '#ff7800', // Laranja para os concelhos
+                                    fillColor: '#ff7800',
                                     weight: 1.5,
                                     opacity: 1,
                                     color: 'white',
@@ -285,29 +308,23 @@
                                 };
                             },
                             onEachFeature: function(feature, layer) {
-                                // Mostra o nome do concelho ao passar o rato por cima
+                                
                                 layer.bindTooltip(feature.properties.nome, { sticky: true });
                                 
                                 layer.on({
                                     mouseover: destacarFeature,
                                     mouseout: resetarDestaque,
+                                    
                                     click: function(e) {
-                                        // Faz zoom no concelho específico clicado!
+                                        // Faz zoom no concelho específico clicado
                                         map.fitBounds(e.target.getBounds());
                                         
-                                        // Mensagem de teste para veres o clique a funcionar no concelho:
-                                        //alert("Sucesso! Clicaste no concelho: " + feature.properties.nome);
-                                        //atualizarPainelDados("Município de " + feature.properties.nome, data);
-                                        fetch(`/api/eleicao/${window.anoAtivo}/municipio/${feature.properties.nome}`)
+                                        fetch(`/api/eleicao/${window.anoAtivo}/municipio/${feature.properties.codigo}00`)
                                         .then(res => res.json())
                                         .then(data => {
                                             atualizarPainelDados("Município de " + feature.properties.nome, data);
                                         })
                                         .catch(err => console.error("Erro na API de concelhos:", err));
-                                        // Aqui podes chamar a função para atualizar os dados do ecrã
-                                        if (typeof loadDistrictData === "function") {
-                                            loadDistrictData(feature.properties.nome);
-                                        }
                                     }
                                 });
                             }
@@ -322,7 +339,6 @@
 
             
 
-            // Arranca o mapa ao carregar a página
             document.addEventListener("DOMContentLoaded", function() {
                 carregarDistritos();
             });
@@ -349,41 +365,39 @@
     }
 
     path:hover {
-        fill: #11ff00 !important; /* Cor do Bootstrap Primary */
+        fill: #11ff00 !important; 
     }
 </style>
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // Selecionamos apenas os grupos que realmente representam um distrito
-        // No teu caso, eles têm o atributo v:groupContext="shape"
+        
         const gruposDistritos = document.querySelectorAll('g[v\\:groupContext="shape"]');
 
         gruposDistritos.forEach(grupo => {
             grupo.style.cursor = "pointer";
 
             grupo.addEventListener('click', function(event) {
-                // Impede que o clique "suba" para outros elementos e dispare o alerta duas vezes
+                
                 event.stopPropagation();
                 event.preventDefault();
 
-                // Procuramos a tag <desc> especificamente dentro deste grupo
+                
                 const descTag = grupo.querySelector('desc');
                 
                 if (descTag) {
                     const nomeDistrito = descTag.textContent.trim();
 
-                    // Verificação de segurança: só dispara se o nome não for um número ou vazio
+                    
                     if (nomeDistrito && nomeDistrito !== "0") {
                         alert("Clicaste no distrito: " + nomeDistrito);
                         
-                        // Atualiza a interface do lado esquerdo
+                        
                         if (typeof loadDistrictData === "function") {
                             loadDistrictData(nomeDistrito);
                         }
                         
-                        // Feedback visual: Muda a cor do path
-                        // Primeiro resetamos todos os paths para a cor original
+                        
                         document.querySelectorAll('path.st11').forEach(p => {
                             p.style.fill = ""; 
                         });

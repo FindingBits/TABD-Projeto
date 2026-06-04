@@ -6,6 +6,8 @@ Este projeto é uma plataforma de análise eleitoral desenvolvida com Flask, Pos
 
 PostgreSQL 17 instalado e em execução no sistema antes de iniciar.
 
+Juntar conteúdos (copiar diretamente para a raiz) em: https://
+
 ## Instalação e Configuração do Ambiente
 
 1. Instalar todas as bibliotecas necessárias
@@ -15,30 +17,45 @@ pip install flask geopandas sqlalchemy geoalchemy2 psycopg2-binary shapely fiona
 
 ## Configuração da Base de Dados
 
-1. Acede ao terminal do PostgreSQL:
+1. Aceder ao terminal do PostgreSQL:
    `psql -d template1`
 
-2. Executa os seguintes comandos SQL para preparar a base de dados:
+2. Executar os seguintes comandos SQL para preparar a base de dados:
    - `CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'admin123';`
    - `CREATE DATABASE eleicoes_db;`
    - `\c eleicoes_db;`
    - `CREATE EXTENSION postgis;`
    - `\q`
 
-3. Restaurar de um backup:
-   - `pg_restore -U postgres -d eleicoes_db -v eleicoes_db_backup.dump`
-
 4. Restaurar um schema:
-   - `psql -U postgres -d eleicoes_db -f "elections_schema.sql"` - Sendo necessário depois carregar dados do excel com o script `carregar_excel.py`
+   - `psql -U postgres -d eleicoes_db -f "schema_data.sql"`
 
 ## Execução dos Pipelines de ETL
 
-1. Executa o script de carregamento dos dados geográficos do GeoPackage para a área de staging:
+1. Executar o script de carregamento dos dados geográficos do GeoPackage (dentro da pasta etl):
    `python carregar_geo.py`
 
 ## Execução da Aplicação Web
 
-1. Inicia o servidor local do Flask:
+1. Iniciar o servidor local do Flask:
    `python app.py`
 
-2. Abre o navegador e acede ao endereço indicado no terminal: http://127.0.0.1:5000.
+2. Abrir o navegador e aceder ao endereço indicado no terminal: http://127.0.0.1:5000
+
+## Execução da Data Warehouse
+
+1. Carregar o schema.
+`psql -h localhost -U postgres -d eleicoes_db -f sql/dw_schema.sql`
+
+2. Aceder ao terminal da db.
+`psql -h localhost -p 5432 -U postgres -d eleicoes_db`
+
+3. Colar no terminal conteudos de `popular_dw.sql`.
+
+4. Chamar PROCEDURE.
+`CALL dw.popular_data_warehouse();`
+
+5. Testar DW
+`SELECT * FROM dw.fact_turnout_analysis LIMIT 5;`
+
+6. Executar qualquer uma das query em `query.sql`.

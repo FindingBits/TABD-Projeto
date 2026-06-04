@@ -1,2 +1,5 @@
 *.gpkg
 *.venv
+*.xlsx
+*.pdf
+*.xls
