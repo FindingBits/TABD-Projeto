@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-# 1. Efetuar o pedido HTTP à página do Tribunal Constitucional
+# 1. Efetuar o pedido HTTP à página do CNE
 url = "https://www.cne.pt/content/partidos-politicos-1"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
