@@ -172,8 +172,13 @@ CREATE SCHEMA IF NOT EXISTS geo;
 CREATE EXTENSION IF NOT EXISTS POSTGIS;
 
 
+
 -- ============================================================
--- Validate Sum of Votes for an election does not exceed Total Votes
+-- Triggers 
+-- ============================================================
+
+-- ============================================================
+-- Validate Sum of Votes for an election does not exceed Total Voters
 -- ============================================================
 ---- verifies if sum of votes does not exceed total
 ---- podiamos fazer uma função que faz uma tabela onde insere as diferenças das contagens
@@ -188,7 +193,7 @@ DECLARE
     v_sum_all_votes INTEGER;
 BEGIN
     -- 1. Get total votes for municipality
-    SELECT voters, (blank_votes + null_votes) 
+    SELECT registered_voters, (blank_votes + null_votes) 
     INTO v_total_voters, v_blank_null
     FROM public.turnout
     WHERE election_year = NEW.election_year AND municipality_code = NEW.municipality_code;
@@ -392,6 +397,259 @@ BEFORE INSERT OR UPDATE ON public.citizen_group_candidacies
 FOR EACH ROW EXECUTE FUNCTION public.fn_check_expected_mandates_limit();
 
 -- ============================================================
+-- Party Doesn't Run as Coalition and Solo
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.fn_check_party_exclusivity()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_party_exists BOOLEAN := FALSE;
+    v_party_name   TEXT;
+BEGIN
+    -- Cenário A: O utilizador está a tentar inserir um partido na coligação
+    IF TG_TABLE_NAME = 'coalition_parties' THEN
+        -- Verifica se este party_id já tem uma candidatura isolada nesse ano e município
+        SELECT EXISTS (
+            SELECT 1 FROM public.party_candidacies
+            WHERE election_year = NEW.election_year
+                AND municipality_code = NEW.municipality_code
+                AND party_id = NEW.party_id
+        ) INTO v_party_exists;
+
+        IF v_party_exists THEN
+            SELECT name INTO v_party_name FROM public.parties WHERE party_id = NEW.party_id;
+            RAISE EXCEPTION 'Violação Jurídica/ETL: O partido "%" (ID: %) não pode ser adicionado à coligação % no concelho % (% ) porque já concorre como partido isolado para o mesmo órgão neste ano.', 
+                v_party_name, NEW.party_id, NEW.coalition_acronym, NEW.municipality_code, NEW.election_year;
+        END IF;
+
+    -- Cenário B: O utilizador está a tentar inserir uma candidatura de partido isolado
+    ELSIF TG_TABLE_NAME = 'party_candidacies' THEN
+        -- Verifica se este party_id já está integrado em alguma coligação nesse ano e município
+        SELECT EXISTS (
+            SELECT 1 FROM public.coalition_parties
+            WHERE election_year = NEW.election_year
+                AND municipality_code = NEW.municipality_code
+                AND party_id = NEW.party_id
+        ) INTO v_party_exists;
+
+        IF v_party_exists THEN
+            SELECT name INTO v_party_name FROM public.parties WHERE party_id = NEW.party_id;
+            RAISE EXCEPTION 'Violação Jurídica/ETL: Não é possível registar uma candidatura isolada para o partido "%" (ID: %) no concelho % (% ) porque este partido já faz parte de uma coligação registada para o mesmo órgão e território.', 
+                v_party_name, NEW.party_id, NEW.municipality_code, NEW.election_year;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger 1: Protege a inserção de partidos em coligações
+DROP TRIGGER IF EXISTS tr_coalition_party_exclusivity ON public.coalition_parties;
+CREATE TRIGGER tr_coalition_party_exclusivity
+BEFORE INSERT OR UPDATE ON public.coalition_parties
+FOR EACH ROW EXECUTE FUNCTION public.fn_check_party_exclusivity();
+
+-- Trigger 2: Protege a inserção de candidaturas partidárias diretas
+DROP TRIGGER IF EXISTS tr_party_candidacy_exclusivity ON public.party_candidacies;
+CREATE TRIGGER tr_party_candidacy_exclusivity
+BEFORE INSERT OR UPDATE ON public.party_candidacies
+FOR EACH ROW EXECUTE FUNCTION public.fn_check_party_exclusivity();
+
+
+-- ============================================================
+-- Audit Votes
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.fn_audit_municipality_votes_discrepancies()
+RETURNS TABLE (
+    ano                 INTEGER,
+    codigo_concelho     VARCHAR(6),
+    nome_concelho       TEXT,
+    votantes_turnout    INTEGER,
+    brancos_e_nulos     INTEGER,
+    votos_candidaturas  INTEGER,
+    votos_totais_calcul INTEGER,
+    diferenca_absoluta  INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH soma_candidaturas AS (
+        -- 1. Agrega e soma os votos de todas as candidaturas concorrentes
+        SELECT 
+            sub.election_year,
+            sub.municipality_code,
+            SUM(sub.votes)::INTEGER AS total_votos_cand
+        FROM (
+            SELECT election_year, municipality_code, votes FROM public.party_candidacies
+            UNION ALL
+            SELECT election_year, municipality_code, votes FROM public.coalition_candidacies
+            UNION ALL
+            SELECT election_year, municipality_code, votes FROM public.citizen_group_candidacies
+        ) sub
+        GROUP BY sub.election_year, sub.municipality_code
+    ),
+    balanco_geral AS (
+        -- 2. Junta os metadados de afluência com o somatório calculado
+        SELECT 
+            t.election_year,
+            t.municipality_code,
+            m.name AS nome_mun,
+            t.voters AS total_voters,
+            (t.blank_votes + t.null_votes) AS total_blank_null,
+            COALESCE(sc.total_votos_cand, 0) AS total_candidaturas,
+            -- O total calculado é: Votos nas Listas + Brancos + Nulos
+            (COALESCE(sc.total_votos_cand, 0) + t.blank_votes + t.null_votes) AS total_calculado
+        FROM public.turnout t
+        JOIN public.municipalities m ON t.municipality_code = m.code
+        LEFT JOIN soma_candidaturas sc ON t.election_year = sc.election_year 
+                                        AND t.municipality_code = sc.municipality_code
+    )
+    -- 3. Filtra apenas os registos onde a conta matemática falha (diferença diferente de 0)
+    SELECT 
+        bg.election_year,
+        bg.municipality_code,
+        bg.nome_mun,
+        bg.total_voters,
+        bg.total_blank_null,
+        bg.total_candidaturas,
+        bg.total_calculado,
+        (bg.total_calculado - bg.total_voters) AS diferenca
+    FROM balanco_geral bg
+    WHERE (bg.total_calculado - bg.total_voters) <> 0
+    ORDER BY bg.election_year DESC, bg.nome_mun ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ============================================================
+-- Audit Expected Mandates
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.fn_audit_mandate_discrepancies()
+RETURNS TABLE (
+    ano                 INTEGER,
+    codigo_concelho     VARCHAR(6),
+    tipo_candidatura    TEXT,
+    identificador       TEXT, -- Nome do Partido ou Acrónimo da Coligação/Grupo
+    votos_obtidos       INTEGER,
+    mandatos_esperados  INTEGER,
+    mandatos_calculados INTEGER,
+    diferenca           INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    -- 1. Verificar Partidos Políticos
+    SELECT 
+        pc.election_year,
+        pc.municipality_code,
+        'PARTIDO'::TEXT AS tipo_candidatura,
+        p.acronym AS identificador,
+        pc.votes,
+        pc.expected_mandates,
+        pc.calculated_mandates,
+        (pc.calculated_mandates - pc.expected_mandates) AS diferenca
+    FROM public.party_candidacies pc
+    JOIN public.parties p ON pc.party_id = p.party_id
+    WHERE pc.expected_mandates <> pc.calculated_mandates
+
+    UNION ALL
+
+    -- 2. Verificar Coligações
+    SELECT 
+        cc.election_year,
+        cc.municipality_code,
+        'COLIGAÇÃO'::TEXT AS tipo_candidatura,
+        cc.acronym AS identificador,
+        cc.votes,
+        cc.expected_mandates,
+        cc.calculated_mandates,
+        (cc.calculated_mandates - cc.expected_mandates) AS diferenca
+    FROM public.coalition_candidacies cc
+    WHERE cc.expected_mandates <> cc.calculated_mandates
+
+    UNION ALL
+
+    -- 3. Verificar Grupos de Cidadãos (Movimentos Independentes)
+    SELECT 
+        gc.election_year,
+        gc.municipality_code,
+        'GRUPO CIDADÃOS'::TEXT AS tipo_candidatura,
+        gc.acronym AS identificador,
+        gc.votes,
+        gc.expected_mandates,
+        gc.calculated_mandates,
+        (gc.calculated_mandates - gc.expected_mandates) AS diferenca
+    FROM public.citizen_group_candidacies gc
+    WHERE gc.expected_mandates <> gc.calculated_mandates
+    
+    -- Ordenar o relatório por ano e concelho para facilitar a leitura
+    ORDER BY election_year DESC, municipality_code ASC, tipo_candidatura ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ============================================================
+-- Audit Missing Election Data
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.fn_audit_missing_election_data()
+RETURNS TABLE (
+    ano                  INTEGER,
+    codigo_concelho      VARCHAR(6),
+    nome_concelho        TEXT,
+    falta_turnout        BOOLEAN,
+    falta_candidaturas   BOOLEAN,
+    status_relatorio     TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH matriz_esperada AS (
+        -- 1. Gera a combinação teórica total: todos os anos vs todos os concelhos
+        SELECT 
+            e.election_year,
+            m.code AS municipality_code,
+            m.name AS municipality_name
+        FROM public.elections e
+        CROSS JOIN public.municipalities m
+    ),
+    controlo_turnout AS (
+        -- 2. Verifica quais os concelhos que têm registo na tabela turnout
+        SELECT election_year, municipality_code, TRUE AS existe_turnout
+        FROM public.turnout
+    ),
+    controlo_candidaturas AS (
+        -- 3. Agrupa as candidaturas para saber se o concelho tem pelo menos 1 lista concorrente
+        SELECT DISTINCT election_year, municipality_code, TRUE AS existe_cand
+        FROM (
+            SELECT election_year, municipality_code FROM public.party_candidacies
+            UNION
+            SELECT election_year, municipality_code FROM public.coalition_candidacies
+            UNION
+            SELECT election_year, municipality_code FROM public.citizen_group_candidacies
+        ) sub
+    )
+    -- 4. Junta tudo e filtra apenas onde houver dados em falta (NULL)
+    SELECT 
+        me.election_year,
+        me.municipality_code,
+        me.municipality_name,
+        (ct.existe_turnout IS NOT TRUE) AS falta_turnout,
+        (cc.existe_cand IS NOT TRUE) AS falta_candidaturas,
+        CASE 
+            WHEN ct.existe_turnout IS NOT TRUE AND cc.existe_cand IS NOT TRUE 
+                THEN 'ERRO CRÍTICO: Concelho totalmente sem dados para este ano'::TEXT
+            WHEN ct.existe_turnout IS NOT TRUE 
+                THEN 'ERRO: Faltam dados na tabela TURNOUT'::TEXT
+            WHEN cc.existe_cand IS NOT TRUE 
+                THEN 'ERRO: Turnout existe, mas não há nenhuma CANDIDATURA inserida'::TEXT
+        END AS status_relatorio
+    FROM matriz_esperada me
+    LEFT JOIN controlo_turnout ct ON me.election_year = ct.election_year AND me.municipality_code = ct.municipality_code
+    LEFT JOIN controlo_candidaturas cc ON me.election_year = cc.election_year AND me.municipality_code = cc.municipality_code
+    -- FILTRO: Mostra apenas as falhas de cobertura
+    WHERE ct.existe_turnout IS NULL OR cc.existe_cand IS NULL
+    ORDER BY me.election_year DESC, me.municipality_name ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
 -- D'Hodnt Method
 -- ============================================================
 
@@ -482,72 +740,6 @@ BEGIN
 
     -- Limpar a tabela temporária da sessão
     DROP TABLE temp_resultados_dhondt;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- ============================================================
--- Check Mandate Consistency
--- ============================================================
-CREATE OR REPLACE FUNCTION public.fn_audit_mandate_discrepancies()
-RETURNS TABLE (
-    ano                 INTEGER,
-    codigo_concelho     VARCHAR(6),
-    tipo_candidatura    TEXT,
-    identificador       TEXT, -- Nome do Partido ou Acrónimo da Coligação/Grupo
-    votos_obtidos       INTEGER,
-    mandatos_esperados  INTEGER,
-    mandatos_calculados INTEGER,
-    diferenca           INTEGER
-) AS $$
-BEGIN
-    RETURN QUERY
-    -- 1. Verificar Partidos Políticos
-    SELECT 
-        pc.election_year,
-        pc.municipality_code,
-        'PARTIDO'::TEXT AS tipo_candidatura,
-        p.acronym AS identificador,
-        pc.votes,
-        pc.expected_mandates,
-        pc.calculated_mandates,
-        (pc.calculated_mandates - pc.expected_mandates) AS diferenca
-    FROM public.party_candidacies pc
-    JOIN public.parties p ON pc.party_id = p.party_id
-    WHERE pc.expected_mandates <> pc.calculated_mandates
-
-    UNION ALL
-
-    -- 2. Verificar Coligações
-    SELECT 
-        cc.election_year,
-        cc.municipality_code,
-        'COLIGAÇÃO'::TEXT AS tipo_candidatura,
-        cc.acronym AS identificador,
-        cc.votes,
-        cc.expected_mandates,
-        cc.calculated_mandates,
-        (cc.calculated_mandates - cc.expected_mandates) AS diferenca
-    FROM public.coalition_candidacies cc
-    WHERE cc.expected_mandates <> cc.calculated_mandates
-
-    UNION ALL
-
-    -- 3. Verificar Grupos de Cidadãos (Movimentos Independentes)
-    SELECT 
-        gc.election_year,
-        gc.municipality_code,
-        'GRUPO CIDADÃOS'::TEXT AS tipo_candidatura,
-        gc.acronym AS identificador,
-        gc.votes,
-        gc.expected_mandates,
-        gc.calculated_mandates,
-        (gc.calculated_mandates - gc.expected_mandates) AS diferenca
-    FROM public.citizen_group_candidacies gc
-    WHERE gc.expected_mandates <> gc.calculated_mandates
-    
-    -- Ordenar o relatório por ano e concelho para facilitar a leitura
-    ORDER BY election_year DESC, municipality_code ASC, tipo_candidatura ASC;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -959,10 +1151,6 @@ INSERT INTO parties (acronym, name, logo_url, active) VALUES
 ('PPV/CDC', 'Partido Cidadania e Democracia Cristã', 'https://www.cne.pt/sites/default/files/partido55_0.png', FALSE),
 ('A', 'Aliança', 'https://www.cne.pt/sites/default/files/partido_alianca.png', FALSE),
 ('PCP-PEV', 'CDU - Coligação Democrática Unitária', 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Logo_of_the_Unitary_Democratic_Coalition.svg', TRUE);
-
--- ====================================================
--- FICHEIRO GLOBAL CONSOLIDADO AUTOMATICAMENTE (ETL)
--- ====================================================
 
 -- ----------------------------------------------------
 -- Data Elections 2021
@@ -7810,38 +7998,12 @@ INSERT INTO public.coalition_parties (election_year, municipality_code, coalitio
 (2017,'470100','PPD/PSD.CDS-PP',1,3),
 (2017,'470100','PPD/PSD.CDS-PP',2,2);
 
+SELECT public.fn_compute_all_dhondt_bulk();
+
 COMMIT;
 
 SELECT public.fn_compute_all_dhondt_bulk();
 --SELECT * FROM fn_audit_mandate_discrepancies();
+--SELECT * FROM public.fn_audit_municipality_votes_discrepancies();
+--SELECT * FROM public.fn_audit_missing_election_data();
 
--- QUERY verificar se o nr de mandatos calculados não excede o nr total de mandatos
--- WITH soma_calculados AS (
---     -- Agrupa e soma os mandatos calculados de todas as tabelas por ano e município
---     SELECT 
---         election_year,
---         municipality_code,
---         SUM(mandatos) AS total_calculado
---     FROM (
---         SELECT election_year, municipality_code, calculated_mandates AS mandatos FROM public.party_candidacies
---         UNION ALL
---         SELECT election_year, municipality_code, calculated_mandates AS mandatos FROM public.coalition_candidacies
---         UNION ALL
---         SELECT election_year, municipality_code, calculated_mandates AS mandatos FROM public.citizen_group_candidacies
---     ) sub
---     GROUP BY election_year, municipality_code
--- )
--- SELECT 
---     sc.election_year AS ano,
---     sc.municipality_code AS codigo_concelho,
---     m.name AS nome_concelho,
---     t.total_mandates AS mandatos_no_turnout,
---     sc.total_calculado AS mandatos_calculados_total,
---     -- Calcula o desvio (positivo significa que o algoritmo atribuiu mandatos a mais)
---     (sc.total_calculado - t.total_mandates) AS desvio
--- FROM soma_calculados sc
--- JOIN public.turnout t ON sc.municipality_code = t.municipality_code AND sc.election_year = t.election_year
--- JOIN public.municipalities m ON sc.municipality_code = m.code
--- -- FILTRO: Mostra apenas se a soma calculada exceder (ou for diferente) o teto do turnout
--- WHERE sc.total_calculado <> t.total_mandates
--- ORDER BY sc.election_year DESC, sc.municipality_code ASC;
