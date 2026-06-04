@@ -96,5 +96,13 @@ BEGIN
     JOIN dw.dim_candidacy c ON dm.c_type = c.candidacy_type AND dm.src_id = c.candidacy_source_id
     ON CONFLICT (election_year, municipality_code, candidacy_key) DO NOTHING;
 
+    REFRESH MATERIALIZED VIEW CONCURRENTLY dw.vw_global_candidacies_results;
+
+    REFRESH MATERIALIZED VIEW CONCURRENTLY dw.vw_municipality_winners;
+
+    REFRESH MATERIALIZED VIEW CONCURRENTLY dw.vw_abstention_analysis;
+
+    REFRESH MATERIALIZED VIEW CONCURRENTLY dw.vw_party_representation_matrix;
+
 END;
 $$;
